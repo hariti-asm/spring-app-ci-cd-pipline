@@ -1,0 +1,55 @@
+image: docker:latest
+
+services:
+  - docker:dind
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  KUBERNETES_URL: ${KUBERNETES_URL}
+  KUBERNETES_TOKEN: ${KUBERNETES_TOKEN}
+  IMAGE_NAME: ${CI_REGISTRY_IMAGE}
+
+stages:
+  - build
+  - test
+  - deploy
+
+cache:
+  paths:
+    - .m2/repository
+
+build:
+  stage: build
+  image: maven:3-jdk-8-alpine
+  script:
+    - mvn clean package -DskipTests
+    - docker build -t ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA} .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - docker push ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
+  artifacts:
+    paths:
+      - target/*.jar
+
+test:
+  stage: test
+  image: maven:3-jdk-8-alpine
+  script:
+    - mvn test
+
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl config set-cluster k8s --server="${KUBERNETES_URL}" --insecure-skip-tls-verify=true
+    - kubectl config set-credentials gitlab --token="${KUBERNETES_TOKEN}"
+    - kubectl config set-context default --cluster=k8s --user=gitlab
+    - kubectl config use-context default
+    - envsubst < deployment.yml | kubectl apply -f -
+    - kubectl rollout status deployment/spring-boot-app
+  environment:
+    name: production
+  only:
+    - main
