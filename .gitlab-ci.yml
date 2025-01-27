@@ -8,8 +8,6 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_DRIVER: overlay2
   MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
-  KUBERNETES_URL: ${KUBERNETES_URL}
-  KUBERNETES_TOKEN: ${KUBERNETES_TOKEN}
   IMAGE_NAME: ${CI_REGISTRY_IMAGE}
 
 stages:
@@ -26,12 +24,18 @@ build:
   image: maven:3-jdk-8-alpine
   script:
     - mvn clean package -DskipTests
-    - docker build -t ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA} .
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-    - docker push ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
   artifacts:
     paths:
       - target/*.jar
+
+docker-build:
+  stage: build
+  needs:
+    - build
+  script:
+    - docker build -t ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA} .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - docker push ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
 
 test:
   stage: test
